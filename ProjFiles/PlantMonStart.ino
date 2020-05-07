@@ -25,7 +25,7 @@ String password = "";
 String network = "";
 String devicename = "";
 boolean needCredentials = true;
-boolean needWiFi = false;
+boolean needCredConnect = true;
 
 // Create a "NetworkCreds" variable and call it "ConnectData"
 NetworkCreds ConnectData;
@@ -33,65 +33,67 @@ NetworkCreds ConnectData;
 
 void setup() {
   Serial.begin(9600);
-  Serial.println("Access Point Web Server");
-  while (!SERIAL_PORT_MONITOR) { }
-
-  // Read the content of "PM_flash_store" into the "WIFIConnect" variable
-  ConnectData = PM_flash_store.read();
+  while (!SERIAL_PORT_MONITOR) { }     // Waits for Serial Monitor
+  ConnectData = PM_flash_store.read();  // Read the content of "PM_flash_store" 
 
   if (WiFi.status() == WL_NO_SHIELD) {
     Serial.println("WiFi shield not present");
     while (true);
   }
   
-  // Check to see if Wifi Connection Data exists in the flash store
-  if (ConnectData.valid == false) {
-    Serial.println("WIFI Connection data not found");  
-    Serial.print("Will create an access point named: ");
-    Serial.println(ap_ssid);
-
-    WiFi.config(APIP, APIP, APIP, IPAddress(255,255,255,0));
-    if (WiFi.beginAP(ap_ssid) != WL_AP_LISTENING) {
-      Serial.println("Creating access point failed");
-      // don't continue
-      while (true);
+  if (ConnectData.valid == true) {   // If we have the network info then try to connect
+    Serial.println("Found Wifi connection data ");
+    for (int i = 0; i < 6; i++) {     // try 5 times
+      Serial.print("Attempting to connect to Network - "); 
+      Serial.print(ConnectData.ssid); 
+      Serial.print("/"); 
+      Serial.println(ConnectData.pass); 
+      WiFi.begin(ConnectData.ssid,ConnectData.pass);  
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi connection successful");
+        needCredentials = false;
+        needCredConnect = false;  
+        printWiFiStatus();
+        break;
+      }
     }
-    else {
-      Serial.println("AP Access is completed and Ready!");
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("Could not connect - switching to SetupMode AP");  
+      runSetupMode();
+      needCredentials = true;
+      needCredConnect = true;  
     }
-    delay(1000);
-    server.begin();
-    printAPStatus();  
-    delay(1000);
   }
   else {
-    Serial.println("Found wifi connection data");  
-    Serial.print("SSID: ");  
-    Serial.println(ConnectData.ssid);
-    Serial.print("Password: ");  
-    Serial.println(ConnectData.pass);
-    while (WiFi.status() != WL_CONNECTED) {
-      Serial.print("Attempting to connect to SSID: ");  
-      WiFi.begin(ConnectData.ssid, ConnectData.pass);
-      delay(5000);
-    }
-    Serial.println("WiFi connection successful");
-    printWiFiStatus();
-    needWiFi = false;
+    Serial.println("WIFI Connection data not found --  creating SetupMode AP");  
+    runSetupMode();
+    needCredentials = true;
+    needCredConnect = true;  
   }
 }
 
 void loop() {
-  if (needCredentials) {
+  while (needCredentials) {
     getCredentials();
+    delay(5000);
   }
-  if (needWiFi) {
-    getWiFi();
+  while (needCredConnect) {
+    conncetNewCreds();
   }
-  Serial.println("running...");  
+  Serial.println("do the main thing");  
   delay(5000);
 }
 
+void runSetupMode() {
+    WiFi.config(APIP, APIP, APIP, IPAddress(255,255,255,0));
+    if (WiFi.beginAP(ap_ssid) != WL_AP_LISTENING) {
+      Serial.println("Creating access point failed");
+      while (true);    // don't continue
+    }
+    Serial.println("AP Access is completed and Ready!");
+    server.begin();
+    printAPStatus();     
+}
 
 void getCredentials() {
   WiFiClient client = server.available();
@@ -135,7 +137,7 @@ void getCredentials() {
             WiFi.end();
             readingdevicename = false;
             needCredentials = false;
-            needWiFi = true;  
+            needCredConnect = true; 
           }
           else if (c!=',') {
             devicename += c;
@@ -160,7 +162,6 @@ void getCredentials() {
             client.print("<input style=\"font-size:30px;\" id=\"network\"/><br>");
             client.print("Wifi Password: ");
             client.print("<input style=\"font-size:30px;\" id=\"password\"/><br>");
-            //client.println("<h2>DEVICE DETAILS</h2>");
             client.print("Device Name: ");
             client.print("<input style=\"font-size:30px;\" id=\"devicename\"/><br>");
             client.print("<br>");
@@ -186,9 +187,6 @@ void getCredentials() {
             client.println("</script>");
             client.println("</html>");
             client.println();
-
-        
-
             break;
           }
           else { 
@@ -206,7 +204,7 @@ void getCredentials() {
   }
 }
 
-void getWiFi () {
+void conncetNewCreds () {
   if (network == "" or password == "") {
         Serial.println("Invalid WiFi credentials");
         while (true);
@@ -214,41 +212,38 @@ void getWiFi () {
   if (devicename == "" ) {
       devicename = "NotProvided";
   }
-  while (WiFi.status() != WL_CONNECTED) {
   
-    int len = network.length() + 1;
-    char ssid[len];
-    network.toCharArray(ssid, len);
-    network.toCharArray(ConnectData.ssid, len);
+  int len = network.length() + 1;
+  char ssid[len];
+  network.toCharArray(ssid, len);
+  network.toCharArray(ConnectData.ssid, len);
       
-    int len2 = password.length() + 1;
-    char pass[len2];
-    password.toCharArray(pass, len2);
-    password.toCharArray(ConnectData.pass, len2);
+  int len2 = password.length() + 1;
+  char pass[len2];
+  password.toCharArray(pass, len2);
+  password.toCharArray(ConnectData.pass, len2);
   
+  while (WiFi.status() != WL_CONNECTED) {
     Serial.print("Attempting to connect to SSID: ");  
     Serial.print(ssid);
     Serial.print(" with Password: ");  
     Serial.println(pass);
-
     WiFi.begin(ssid, pass);
-    delay(5000);
+    delay(3000);
     }
 
   Serial.println("WiFi connection successful");
   printWiFiStatus();
-  needWiFi = false;
+  needCredConnect = false; 
   // Fill the "ConnectData" structure
   Serial.println("Going to save network creds to flash");  
   Serial.print("SSID: ");  
   Serial.println(ConnectData.ssid);
   Serial.print("Password: ");  
   Serial.println(ConnectData.pass);
-
   ConnectData.valid = true;
   // ...and finally save everything into "my_flash_store"
   PM_flash_store.write(ConnectData);
-
   delay(1000);
 }
 
