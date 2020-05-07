@@ -1,0 +1,5 @@
+# Ignore the build directory
+**/build
+
+# Ignore the password files
+ProjFiles/arduino_secrets.h
