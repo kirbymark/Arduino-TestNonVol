@@ -1,5 +1,16 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
+#include <FlashStorage.h>
+
+typedef struct {
+  boolean valid;
+  char ssid[32];
+  char pass[63];
+} NetworkCreds;
+
+// Reserve a portion of flash memory to store a "NetworkCreds" and
+// call it "PM_flash_store".
+FlashStorage(PM_flash_store, NetworkCreds);
 
 char ap_ssid[] = "PM_SetupMode";
 const IPAddress APIP(192, 168, 0, 34);
@@ -16,33 +27,58 @@ String devicename = "";
 boolean needCredentials = true;
 boolean needWiFi = false;
 
+// Create a "NetworkCreds" variable and call it "ConnectData"
+NetworkCreds ConnectData;
+
 
 void setup() {
   Serial.begin(9600);
   Serial.println("Access Point Web Server");
-  
+  while (!SERIAL_PORT_MONITOR) { }
+
+  // Read the content of "PM_flash_store" into the "WIFIConnect" variable
+  ConnectData = PM_flash_store.read();
+
   if (WiFi.status() == WL_NO_SHIELD) {
     Serial.println("WiFi shield not present");
     while (true);
   }
   
-  Serial.print("Will create an access point named: ");
-  Serial.println(ap_ssid);
+  // Check to see if Wifi Connection Data exists in the flash store
+  if (ConnectData.valid == false) {
+    Serial.println("WIFI Connection data not found");  
+    Serial.print("Will create an access point named: ");
+    Serial.println(ap_ssid);
 
-  WiFi.config(APIP, APIP, APIP, IPAddress(255,255,255,0));
-  if (WiFi.beginAP(ap_ssid) != WL_AP_LISTENING) {
-    Serial.println("Creating access point failed");
-    // don't continue
-    while (true);
+    WiFi.config(APIP, APIP, APIP, IPAddress(255,255,255,0));
+    if (WiFi.beginAP(ap_ssid) != WL_AP_LISTENING) {
+      Serial.println("Creating access point failed");
+      // don't continue
+      while (true);
+    }
+    else {
+      Serial.println("AP Access is completed and Ready!");
+    }
+    delay(1000);
+    server.begin();
+    printAPStatus();  
+    delay(1000);
   }
   else {
-    Serial.println("AP Access is completed and Ready!");
+    Serial.println("Found wifi connection data");  
+    Serial.print("SSID: ");  
+    Serial.println(ConnectData.ssid);
+    Serial.print("Password: ");  
+    Serial.println(ConnectData.pass);
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print("Attempting to connect to SSID: ");  
+      WiFi.begin(ConnectData.ssid, ConnectData.pass);
+      delay(5000);
+    }
+    Serial.println("WiFi connection successful");
+    printWiFiStatus();
+    needWiFi = false;
   }
-
-  delay(1000);
-  server.begin();
-  printAPStatus();  
-  delay(1000);
 }
 
 void loop() {
@@ -52,6 +88,8 @@ void loop() {
   if (needWiFi) {
     getWiFi();
   }
+  Serial.println("running...");  
+  delay(5000);
 }
 
 
@@ -181,10 +219,12 @@ void getWiFi () {
     int len = network.length() + 1;
     char ssid[len];
     network.toCharArray(ssid, len);
-    
+    network.toCharArray(ConnectData.ssid, len);
+      
     int len2 = password.length() + 1;
     char pass[len2];
     password.toCharArray(pass, len2);
+    password.toCharArray(ConnectData.pass, len2);
   
     Serial.print("Attempting to connect to SSID: ");  
     Serial.print(ssid);
@@ -192,13 +232,23 @@ void getWiFi () {
     Serial.println(pass);
 
     WiFi.begin(ssid, pass);
-    delay(10000);
+    delay(5000);
     }
 
   Serial.println("WiFi connection successful");
   printWiFiStatus();
   needWiFi = false;
-  
+  // Fill the "ConnectData" structure
+  Serial.println("Going to save network creds to flash");  
+  Serial.print("SSID: ");  
+  Serial.println(ConnectData.ssid);
+  Serial.print("Password: ");  
+  Serial.println(ConnectData.pass);
+
+  ConnectData.valid = true;
+  // ...and finally save everything into "my_flash_store"
+  PM_flash_store.write(ConnectData);
+
   delay(1000);
 }
 
